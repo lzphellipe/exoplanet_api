@@ -167,19 +167,7 @@ class CSVManager:
     def save_data(self, data: List[Dict], file_key: str,
                   append: bool = True, source: str = "api",
                   unique_column: str = 'pl_name') -> Dict[str, Any]:
-        """
-        Método unificado para salvar qualquer tipo de dado em CSV
 
-        Args:
-            data: Lista de dicionários com dados
-            file_key: Chave do arquivo ('exoplanets', 'confirmed_planets', etc)
-            append: Se True, adiciona aos dados existentes
-            source: Fonte dos dados ('api', 'sample', 'backup')
-            unique_column: Coluna para identificar registros únicos
-
-        Returns:
-            Dict com informações da operação
-        """
         try:
             if not data:
                 logger.warning(f"Nenhum dado para salvar em {file_key}")
@@ -193,7 +181,7 @@ class CSVManager:
             df = pd.DataFrame(data)
             original_count = len(df)
 
-            # Remove duplicatas
+
             duplicates_removed = 0
             if unique_column in df.columns:
                 initial_count = len(df)

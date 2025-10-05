@@ -1,9 +1,5 @@
-"""
-Endpoints de Modelo ML - Corrigido (sem import circular)
-"""
 from flask import jsonify, request
 import logging
-
 from services.lightGBM_service import LightGBMService
 from models.ai_memory import AIMemory
 
@@ -14,44 +10,92 @@ ai_memory = AIMemory()
 
 
 def configure_model_endpoints(app):
-    """Configura os endpoints de modelo ML"""
+    """Configure ML model endpoints"""
 
-    @app.route('/api/model/train', methods=['POST'])
+    @app.route('/api/model/train', methods=['GET', 'POST'])
     def train_model():
-        """Treina o modelo LightGBM"""
+        """Train LightGBM model - supports both GET and POST"""
+
+        # If GET request, return training instructions
+        if request.method == 'GET':
+            return jsonify({
+                "message": "To train the model, send a POST request to this endpoint",
+                "method": "POST",
+                "endpoint": "/api/model/train",
+                "note": "You can send an empty body or custom parameters",
+                "examples": {
+                    "curl_empty": "curl -X POST http://localhost:5000/api/model/train",
+                    "curl_with_json": "curl -X POST http://localhost:5000/api/model/train -H 'Content-Type: application/json' -d '{\"learning_rate\": 0.05}'",
+                    "python": "requests.post('http://localhost:5000/api/model/train')"
+                },
+                "optional_parameters": {
+                    "learning_rate": "float (default: 0.05)",
+                    "n_estimators": "int (default: 100)",
+                    "num_leaves": "int (default: 31)"
+                },
+                "current_status": model_service.get_model_info() if model_service.is_trained else {
+                    "status": "No model trained yet"}
+            }), 200
+
+        # POST request - actual training
         try:
-            training_params = request.get_json() or {}
+            logger.info("Starting model training...")
+
+            # Safely get JSON data - handle empty body
+            training_params = {}
+            try:
+                if request.data:  # Check if there's any data
+                    training_params = request.get_json(silent=True) or {}
+                logger.info(f"Training parameters received: {training_params}")
+            except Exception as e:
+                logger.warning(f"Could not parse JSON (using defaults): {e}")
+                training_params = {}
 
             result = model_service.train_model(training_params)
 
             if 'error' in result:
                 return jsonify(result), 400
 
-            return jsonify(result)
+            return jsonify(result), 200
 
         except Exception as e:
-            logger.error(f"Erro no endpoint /api/model/train: {e}")
+            logger.error(f"Error in endpoint /api/model/train: {e}", exc_info=True)
             return jsonify({"error": str(e)}), 500
 
     @app.route('/api/model/predict', methods=['POST'])
     def predict():
-        """Faz predições com o modelo treinado"""
+        """Make predictions with trained model"""
         try:
-            data = request.get_json()
+            # Check if request has data
+            if not request.data:
+                return jsonify({
+                    "error": "Request body is required",
+                    "example": {
+                        "features": [1.0, 2.0, 3.0, "..."]
+                    }
+                }), 400
+
+            data = request.get_json(silent=True)
             if not data or 'features' not in data:
-                return jsonify({"error": "Dados de features necessários"}), 400
+                return jsonify({
+                    "error": "Feature data required in request body",
+                    "required_format": {
+                        "features": [1.0, 2.0, 3.0, "..."]
+                    },
+                    "example_curl": "curl -X POST http://localhost:5000/api/model/predict -H 'Content-Type: application/json' -d '{\"features\": [1.0, 2.0, 3.0]}'"
+                }), 400
 
             features = data['features']
 
             if not isinstance(features, list):
-                return jsonify({"error": "Features devem ser uma lista"}), 400
+                return jsonify({"error": "Features must be a list"}), 400
 
             result = model_service.predict(features)
 
             if 'error' in result:
                 return jsonify(result), 400
 
-            # Armazena na memória da IA
+            # Store in AI memory
             prediction_record = {
                 "features": features,
                 "prediction": result["prediction"],
@@ -61,18 +105,18 @@ def configure_model_endpoints(app):
             ai_memory.store_prediction(prediction_record)
 
             return jsonify({
-                "message": "Predição realizada com sucesso",
+                "message": "Prediction completed successfully",
                 "prediction": result,
                 "memory_stats": ai_memory.get_memory_stats()
-            })
+            }), 200
 
         except Exception as e:
-            logger.error(f"Erro no endpoint /api/model/predict: {e}")
+            logger.error(f"Error in endpoint /api/model/predict: {e}", exc_info=True)
             return jsonify({"error": str(e)}), 500
 
     @app.route('/api/model/info', methods=['GET'])
     def get_model_info():
-        """Retorna informações do modelo treinado"""
+        """Return trained model information"""
         try:
             result = model_service.get_model_info()
 
@@ -80,17 +124,17 @@ def configure_model_endpoints(app):
                 return jsonify(result), 404
 
             return jsonify({
-                "message": "Informações do modelo",
+                "message": "Model information",
                 "data": result
-            })
+            }), 200
 
         except Exception as e:
-            logger.error(f"Erro no endpoint /api/model/info: {e}")
+            logger.error(f"Error in endpoint /api/model/info: {e}", exc_info=True)
             return jsonify({"error": str(e)}), 500
 
     @app.route('/api/model/features/importance', methods=['GET'])
     def get_feature_importance():
-        """Retorna importância das features"""
+        """Return feature importance"""
         try:
             result = model_service.get_feature_importance()
 
@@ -98,35 +142,38 @@ def configure_model_endpoints(app):
                 return jsonify(result), 404
 
             return jsonify({
-                "message": "Importância das features",
+                "message": "Feature importance",
                 "data": result
-            })
+            }), 200
 
         except Exception as e:
-            logger.error(f"Erro no endpoint /api/model/features/importance: {e}")
+            logger.error(f"Error in endpoint /api/model/features/importance: {e}", exc_info=True)
             return jsonify({"error": str(e)}), 500
 
     @app.route('/api/model/history', methods=['GET'])
     def get_model_history():
-        """Retorna histórico de modelos treinados"""
+        """Return model training history"""
         try:
             history = ai_memory.get_model_history()
-
             return jsonify({
-                "message": "Histórico de modelos",
+                "message": "Model history",
                 "count": len(history),
                 "data": history
-            })
+            }), 200
 
         except Exception as e:
-            logger.error(f"Erro no endpoint /api/model/history: {e}")
+            logger.error(f"Error in endpoint /api/model/history: {e}", exc_info=True)
             return jsonify({"error": str(e)}), 500
 
     @app.route('/api/model/evaluate', methods=['POST'])
     def evaluate_model():
-        """Avalia o modelo treinado com dados de teste"""
+        """Evaluate trained model with test data"""
         try:
-            data = request.get_json()
+            # Handle empty body
+            data = {}
+            if request.data:
+                data = request.get_json(silent=True) or {}
+
             test_data = data.get('test_data') if data else None
 
             result = model_service.evaluate_model(test_data)
@@ -135,12 +182,12 @@ def configure_model_endpoints(app):
                 return jsonify(result), 400
 
             return jsonify({
-                "message": "Avaliação do modelo realizada com sucesso",
+                "message": "Model evaluation completed successfully",
                 "evaluation": result
-            })
+            }), 200
 
         except Exception as e:
-            logger.error(f"Erro no endpoint /api/model/evaluate: {e}")
+            logger.error(f"Error in endpoint /api/model/evaluate: {e}", exc_info=True)
             return jsonify({"error": str(e)}), 500
 
-    logger.info("✓ Endpoints de modelo ML configurados")
+    logger.info("✓ Model endpoints configured")

@@ -1,7 +1,4 @@
-"""
-Exoplanet Service - Refatorado
-Bugs corrigidos e duplicações eliminadas
-"""
+
 import requests
 import pandas as pd
 import logging
@@ -12,7 +9,7 @@ logger = logging.getLogger(__name__)
 
 
 class ExoplanetService:
-    """Serviço para buscar dados de exoplanetas da NASA Exoplanet Archive"""
+
 
     def __init__(self):
         self.base_url = "https://exoplanetarchive.ipac.caltech.edu/TAP/sync"
@@ -20,22 +17,14 @@ class ExoplanetService:
         self.timeout = 30
 
     def fetch_exoplanet_data(self, query: str = None) -> Optional[List[Dict]]:
-        """
-        Busca dados de exoplanetas da API com tratamento robusto de erros
 
-        Args:
-            query: Query ADQL personalizada (opcional)
-
-        Returns:
-            Lista de dicionários com dados ou None em caso de erro
-        """
         try:
             # Verifica cache
             if query and query in self.cache:
                 logger.info("✓ Retornando dados do cache")
                 return self.cache[query]
 
-            # Query padrão se não especificada
+
             if query is None:
                 query = (
                     "select * from pscomppars "
@@ -85,46 +74,34 @@ class ExoplanetService:
             return None
 
     def get_tess_exoplanets(self) -> Optional[List[Dict]]:
-        """
-        Busca exoplanetas descobertos pelo TESS com fallback
 
-        Returns:
-            Lista de dicionários com dados TESS
-        """
         try:
-            logger.info("Buscando exoplanetas TESS...")
+            logger.info(" TESS...")
 
             query = (
-                "select * from pscomppars "
-                "where disc_facility like '%TESS%' "
-                "order by pl_orbper desc"
+                "select * from toi "
+                "where tfopwg_disp IN ('CP','FP')"
             )
             data = self.fetch_exoplanet_data(query)
-
             # Fallback: busca dados gerais se TESS falhar
             if data is None or len(data) == 0:
-                logger.warning("Falha ao buscar TESS, usando fallback...")
-                fallback_query = "select * from pscomppars limit 100"
+                logger.warning("Fail TESS  fallback...")
+                fallback_query = "select * from toi limit 10"
                 data = self.fetch_exoplanet_data(fallback_query)
 
             # Último fallback: dados de exemplo
             if data is None or len(data) == 0:
-                logger.warning("API falhou completamente, usando dados de exemplo")
+                logger.warning("API failed")
                 data = self.get_sample_data()
 
             return data
 
         except Exception as e:
-            logger.error(f"Erro ao buscar exoplanetas TESS: {e}")
+            logger.error(f"Error TESS: {e}")
             return self.get_sample_data()
 
     def get_exoplanets_confirmed(self) -> Optional[List[Dict]]:
-        """
-        Busca exoplanetas confirmados da tabela ps
 
-        Returns:
-            Lista de dicionários com planetas confirmados
-        """
         try:
             logger.info("Buscando exoplanetas confirmados...")
 
@@ -145,22 +122,18 @@ class ExoplanetService:
                     if planet.get('pl_name') and planet.get('pl_rade') is not None
                 ]
 
-                logger.info(f"✓ {len(confirmed)} exoplanetas confirmados com dados válidos")
+                logger.info(f"✓ {len(confirmed)} exoplanets confirmed")
                 return confirmed
             else:
-                logger.warning("Nenhum dado confirmado retornado, usando fallback")
+                logger.warning("NaN, using fallback")
                 return self.get_tess_exoplanets()
 
         except Exception as e:
-            logger.error(f"Erro ao buscar confirmados: {e}")
+            logger.error(f"Errorr: {e}")
             return None
 
     def fetch_koi_candidates(self) -> Optional[List[Dict]]:
-        """
-        Busca candidatos KOI (Kepler Objects of Interest)
-        Returns:
-            Lista de candidatos KOI
-        """
+
         try:
 
             query = """
@@ -179,27 +152,19 @@ class ExoplanetService:
                     if koi.get('kepoi_name') and koi.get('koi_prad') is not None
                 ]
 
-                logger.info(f"✓ {len(candidates)} candidatos KOI válidos")
+                logger.info(f"✓ {len(candidates)} candidates KOI ")
                 return candidates
 
 
 
         except Exception as e:
-            logger.error(f"Erro ao buscar candidatos KOI: {e}")
+            logger.error(f"Error KOI: {e}")
             return None
 
     def get_exoplanet_by_name(self, planet_name: str) -> Optional[Dict]:
-        """
-        Busca um exoplaneta específico por nome
 
-        Args:
-            planet_name: Nome do exoplaneta
-
-        Returns:
-            Dicionário com dados do exoplaneta ou None
-        """
         try:
-            logger.info(f"Buscando exoplaneta: {planet_name}")
+            logger.info(f"Seach exoplaneta: {planet_name}")
 
             # Sanitiza nome
             safe_name = planet_name.replace("'", "''")
@@ -213,24 +178,19 @@ class ExoplanetService:
             data = self.fetch_exoplanet_data(query)
 
             if data and len(data) > 0:
-                logger.info(f"✓ Exoplaneta '{planet_name}' encontrado")
+                logger.info(f"✓ Exoplanet '{planet_name}'  found")
                 return data[0]
             else:
-                logger.warning(f"Exoplaneta '{planet_name}' não encontrado")
+                logger.warning(f"Exoplanet '{planet_name}' not found")
                 return None
 
         except Exception as e:
-            logger.error(f"Erro ao buscar {planet_name}: {e}")
+            logger.error(f"Error  {planet_name}: {e}")
             return None
 
     def get_sample_data(self) -> List[Dict]:
-        """
-        Retorna dados de exemplo para desenvolvimento
 
-        Returns:
-            Lista com dados de exemplo
-        """
-        logger.info("⚠ Usando dados de exemplo para desenvolvimento")
+        logger.info("Using sample data for development")
 
         return [
             {
@@ -316,16 +276,7 @@ class ExoplanetService:
         ]
 
     def search_by_facility(self, facility: str, limit: int = 100) -> Optional[List[Dict]]:
-        """
-        Busca exoplanetas por instalação de descoberta
 
-        Args:
-            facility: Nome da instalação (ex: 'TESS', 'Kepler', 'CHEOPS')
-            limit: Limite de resultados
-
-        Returns:
-            Lista de exoplanetas descobertos pela instalação
-        """
         try:
             query = (
                 f"select top {limit} * from ps "
@@ -336,21 +287,16 @@ class ExoplanetService:
             data = self.fetch_exoplanet_data(query)
 
             if data:
-                logger.info(f"✓ {len(data)} exoplanetas de {facility}")
+                logger.info(f"✓ {len(data)} exoplanet of {facility}")
 
             return data
 
         except Exception as e:
-            logger.error(f"Erro ao buscar por facility '{facility}': {e}")
+            logger.error(f"Error searching for facility '{facility}': {e}")
             return None
 
     def get_statistics(self) -> Dict:
-        """
-        Retorna estatísticas sobre o cache e uso do serviço
 
-        Returns:
-            Dicionário com estatísticas
-        """
         return {
             'cache_size': len(self.cache),
             'cached_queries': list(self.cache.keys()),
@@ -359,6 +305,6 @@ class ExoplanetService:
         }
 
     def clear_cache(self):
-        """Limpa o cache de queries"""
+
         self.cache.clear()
-        logger.info("✓ Cache limpo")
+        logger.info("✓ Cache clear")

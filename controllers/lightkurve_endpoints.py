@@ -1,6 +1,4 @@
-"""
-Endpoints de Light Curves - Corrigido (sem import circular)
-"""
+
 from http.client import HTTPException
 from flask import jsonify, request
 import logging
@@ -17,7 +15,6 @@ def configure_lightkurve_endpoints(app):
 
     @app.route('/api/lightcurves/search/<target_name>', methods=['GET'])
     def search_lightcurves(target_name):
-        """Busca light curves disponíveis para um alvo"""
         try:
             mission = request.args.get('mission', 'TESS')
             quarter = request.args.get('quarter', None, type=int)
@@ -31,7 +28,7 @@ def configure_lightkurve_endpoints(app):
                 return jsonify(result), 404
 
             return jsonify({
-                "message": "Light curves encontradas",
+                "message": "Light curves found",
                 "data": result
             })
 
@@ -41,7 +38,6 @@ def configure_lightkurve_endpoints(app):
 
     @app.route('/api/lightcurves/download/<target_name>', methods=['GET'])
     def download_lightcurve(target_name):
-        """Faz download de uma light curve específica"""
         try:
             mission = request.args.get('mission', 'TESS')
             quarter = request.args.get('quarter', None, type=int)
@@ -56,7 +52,7 @@ def configure_lightkurve_endpoints(app):
                 return jsonify(result), 404
 
             return jsonify({
-                "message": "Light curve baixada com sucesso",
+                "message": "Light curve download sucessful",
                 "data": result
             })
 
@@ -66,7 +62,6 @@ def configure_lightkurve_endpoints(app):
 
     @app.route("/api/lightkurve/confirmed", methods=['GET'])
     def fetch_lightkurve_features():
-        """Processa features de curvas de luz para planetas confirmados"""
         try:
             features_df = lightkurve_service.process_dataset("confirmed", max_samples=10)
 

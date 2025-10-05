@@ -1,22 +1,23 @@
-"""
-Aplicação Flask Principal - Exoplanet API
-Refatorado: Imports circulares corrigidos
-"""
+import os
 import logging
-from flask import Flask, jsonify
+from flask import Flask, request, jsonify
 from flask_cors import CORS
+import requests
 
 # Configuração do logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Inicializa aplicação Flask
+# Importações locais - ajustar conforme sua estrutura
+try:
+    from models.data_processor import DataProcessor
+    from utils.helpers import validate_parameters
+except ImportError:
+    logger.warning("Alguns módulos não puderam ser importados")
+
 app = Flask(__name__)
 
-# Configuração CORS
+# Configuração do CORS
 CORS(app, resources={
     r"/*": {
         "origins": [
@@ -25,8 +26,6 @@ CORS(app, resources={
             "http://127.0.0.1:3000",
             "http://localhost:5173",
             "http://127.0.0.1:5173",
-            "http://localhost:8080",
-            "http://127.0.0.1:5000"
         ],
         "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
         "allow_headers": ["Content-Type", "Authorization", "X-Requested-With"],
@@ -36,138 +35,155 @@ CORS(app, resources={
     }
 })
 
-# ⚠️ IMPORTANTE: Importar APÓS criar a instância 'app'
-# Isso evita import circular
-try:
-    from controllers.exoplanet_endpoints import configure_exoplanet_endpoints
-    from controllers.lightkurve_endpoints import configure_lightkurve_endpoints
-    from controllers.model_endpoints import configure_model_endpoints
+# URLs das APIs
+EXOPLANET_URL = "https://exoplanetarchive.ipac.caltech.edu/TAP/sync?query=select+*+from+pscomppars+where+disc_facility+like+%27%25TESS%25%27+order+by+pl_orbper+desc&format=json"
+NASA_API_CONFIRMED = "https://exoplanetarchive.ipac.caltech.edu/TAP/sync?query=select+pl_name,hostname,pl_orbper,pl_bmasse,pl_rade,st_teff,st_mass,st_rad,disc_year,disc_facility+from+ps+where+default_flag=1&format=json"
+KOI_API = "https://exoplanetarchive.ipac.caltech.edu/TAP/sync?query=select+koi_period,koi_impact,koi_duration,koi_depth,koi_prad,koi_teq,koi_insol,koi_steff,koi_srad,koi_smass,koi_disposition+from+cumulative&format=json"
 
-    # Configura todos os endpoints
-    configure_exoplanet_endpoints(app)
-    configure_lightkurve_endpoints(app)
-    configure_model_endpoints(app)
 
-    logger.info("✓ Todos os endpoints configurados com sucesso")
+class ExoplanetAPI:
+    def __init__(self):
+        try:
+            self.data_processor = DataProcessor()
+        except:
+            self.data_processor = None
+        self.model = None
+        self.features = None
 
-except ImportError as e:
-    logger.error(f"Erro ao importar endpoints: {e}")
-    logger.error("Verifique se os arquivos estão na pasta 'controllers/'")
-    raise
+    def fetch_exoplanet_data(self):
+        """Busca dados de exoplanetas da API"""
+        try:
+            logger.info("Buscando dados de exoplanetas...")
+            response = requests.get(EXOPLANET_URL, timeout=30)
+            response.raise_for_status()
+            data = response.json()
+            logger.info(f"Dados recuperados: {len(data)} registros")
+            return data
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Erro ao buscar dados: {e}")
+            return None
+
+    def fetch_exoplanet_koi(self):
+        """Busca dados KOI de exoplanetas"""
+        try:
+            logger.info("Buscando dados KOI...")
+            response = requests.get(KOI_API, timeout=30)
+            response.raise_for_status()
+            data = response.json()
+            logger.info(f"Dados KOI recuperados: {len(data)} registros")
+            return data
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Erro ao buscar dados KOI: {e}")
+            return None
+
+    def fetch_exoplanet_confirmed(self):
+        """Busca dados de exoplanetas confirmados"""
+        try:
+            logger.info("Buscando dados de exoplanetas confirmados...")
+            response = requests.get(NASA_API_CONFIRMED, timeout=30)
+            response.raise_for_status()
+            data = response.json()
+            logger.info(f"Dados confirmados recuperados: {len(data)} registros")
+            return data
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Erro ao buscar dados confirmados: {e}")
+            return None
+
+
+# Instância da API
+exoplanet_api = ExoplanetAPI()
+
+
+@app.route('/', methods=['GET'])
+def home():
+    """Rota raiz"""
+    return jsonify({
+        "message": "Exoplanet API",
+        "version": "1.0",
+        "endpoints": {
+            "exoplanets": "/api/exoplanets",
+            "confirmed": "/api/exoplanets/confirmed",
+            "koi": "/api/exoplanets/koi",
+            "health": "/health"
+        }
+    })
 
 
 @app.route('/health', methods=['GET'])
 def health_check():
     """Health check da API"""
-    try:
-        from services.csv_manager import CSVManager
-
-        csv_manager = CSVManager()
-        stats = csv_manager.get_file_stats()
-
-        return jsonify({
-            "status": "healthy",
-            "service": "Exoplanet API",
-            "version": "2.0.0",
-            "endpoints": {
-                "exoplanets": "✓",
-                "lightkurve": "✓",
-                "model": "✓"
-            },
-            "data_files": {
-                "exoplanets": stats['files'].get('exoplanets', {}).get('exists', False),
-                "confirmed_planets": stats['files'].get('confirmed_planets', {}).get('exists', False)
-            }
-        })
-    except Exception as e:
-        logger.error(f"Erro no health check: {e}")
-        return jsonify({
-            "status": "degraded",
-            "error": str(e)
-        }), 500
-
-
-@app.route('/', methods=['GET'])
-def root():
-    """Rota raiz com informações da API"""
     return jsonify({
-        "message": "Exoplanet API v2.0.0",
-        "status": "running",
-        "documentation": "/health",
-        "available_endpoints": {
-            "exoplanets": [
-                "GET /api/exoplanets",
-                "GET /api/exoplanets/confirmed",
-                "GET /api/exoplanets/koi/<limit>",
-                "GET /api/exoplanets/<planet_name>"
-            ],
-            "memory": [
-                "GET /api/memory/stats",
-                "POST /api/memory/clear"
-            ],
-            "data": [
-                "GET /api/data/stats"
-            ],
-            "model": [
-                "POST /api/model/train",
-                "POST /api/model/predict",
-                "GET /api/model/info",
-                "GET /api/model/features/importance",
-                "GET /api/model/history",
-                "POST /api/model/evaluate"
-            ],
-            "lightcurves": [
-                "GET /api/lightcurves/search/<target_name>",
-                "GET /api/lightcurves/download/<target_name>",
-                "GET /api/lightkurve/confirmed"
-            ]
-        }
+        "status": "healthy",
+        "service": "Exoplanet API",
+        "version": "1.0"
     })
 
 
+@app.route('/api/exoplanets', methods=['GET'])
+def get_exoplanets():
+    """Endpoint para buscar dados brutos de exoplanetas"""
+    try:
+        data = exoplanet_api.fetch_exoplanet_data()
+        if data is None:
+            return jsonify({"error": "Falha ao buscar dados"}), 500
+
+        return jsonify({
+            "message": "Dados recuperados com sucesso",
+            "count": len(data),
+            "data": data
+        })
+    except Exception as e:
+        logger.error(f"Erro no endpoint /api/exoplanets: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/exoplanets/koi', methods=['GET'])
+def get_exoplanets_koi():
+    """Endpoint para buscar dados KOI"""
+    try:
+        data = exoplanet_api.fetch_exoplanet_koi()
+        if data is None:
+            return jsonify({"error": "Falha ao buscar dados KOI"}), 500
+
+        return jsonify({
+            "message": "Dados KOI recuperados com sucesso",
+            "count": len(data),
+            "data": data
+        })
+    except Exception as e:
+        logger.error(f"Erro no endpoint /api/exoplanets/koi: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/exoplanets/confirmed', methods=['GET'])
+def fetch_confirmed():
+    """Endpoint para buscar dados confirmados"""
+    try:
+        data = exoplanet_api.fetch_exoplanet_confirmed()
+        if data is None:
+            return jsonify({"error": "Falha ao buscar dados confirmados"}), 500
+
+        return jsonify({
+            "message": "Dados confirmados recuperados com sucesso",
+            "count": len(data),
+            "data": data
+        })
+    except Exception as e:
+        logger.error(f"Erro no endpoint /api/exoplanets/confirmed: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+# Manipulador de erros global
 @app.errorhandler(404)
 def not_found(error):
-    """Handler para rotas não encontradas"""
-    return jsonify({
-        "error": "Endpoint não encontrado",
-        "message": str(error),
-        "tip": "Acesse GET / para ver todos os endpoints disponíveis"
-    }), 404
+    return jsonify({"error": "Endpoint não encontrado"}), 404
 
 
 @app.errorhandler(500)
 def internal_error(error):
-    """Handler para erros internos"""
-    logger.error(f"Erro interno: {error}")
-    return jsonify({
-        "error": "Erro interno do servidor",
-        "message": "Por favor, verifique os logs ou contate o administrador"
-    }), 500
-
-
-@app.errorhandler(Exception)
-def handle_exception(error):
-    """Handler genérico para exceções não tratadas"""
-    logger.error(f"Exceção não tratada: {error}", exc_info=True)
-    return jsonify({
-        "error": "Erro inesperado",
-        "message": str(error),
-        "type": type(error).__name__
-    }), 500
+    return jsonify({"error": "Erro interno do servidor"}), 500
 
 
 if __name__ == '__main__':
-    logger.info("=" * 60)
-    logger.info("🚀 Iniciando Exoplanet API v2.0.0")
-    logger.info("=" * 60)
-    logger.info("📊 Endpoints configurados:")
-    logger.info("   ✓ Exoplanets endpoints")
-    logger.info("   ✓ Lightkurve endpoints")
-    logger.info("   ✓ Model endpoints")
-    logger.info("=" * 60)
-    logger.info("🌐 Servidor rodando em: http://localhost:5000")
-    logger.info("📖 Documentação: http://localhost:5000/")
-    logger.info("💚 Health check: http://localhost:5000/health")
-    logger.info("=" * 60)
-
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    port = int(os.environ.get('PORT', 5000))
+    app.run(debug=False, host='0.0.0.0', port=port)

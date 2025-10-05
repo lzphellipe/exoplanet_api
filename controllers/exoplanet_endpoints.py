@@ -1,7 +1,4 @@
-"""
-Endpoints de Exoplanetas - Refatorado
-Bugs corrigidos e duplicações eliminadas
-"""
+
 import logging
 from flask import jsonify, request
 
@@ -22,12 +19,7 @@ def configure_exoplanet_endpoints(app):
 
     @app.route('/api/exoplanets', methods=['GET'])
     def get_exoplanets():
-        """
-        Busca dados de exoplanetas TESS e armazena em CSV
 
-        Returns:
-            JSON com dados e estatísticas de memória
-        """
         try:
             logger.info("Buscando dados de exoplanetas TESS...")
 
@@ -62,31 +54,27 @@ def configure_exoplanet_endpoints(app):
 
     @app.route('/api/exoplanets/confirmed', methods=['GET'])
     def get_confirmed_exoplanets():
-        """
-        Busca exoplanetas confirmados e salva em CSV
 
-        Returns:
-            JSON com dados confirmados
-        """
         try:
-            logger.info("Buscando exoplanetas confirmados...")
+            logger.info("Searching for confirmed exoplanets...")
 
             data = exoplanet_service.get_exoplanets_confirmed()
 
             if data is None:
                 return jsonify({
-                    "error": "Falha ao buscar dados confirmados"
+                    "error": "Failed to fetch confirmed data"
                 }), 404
 
             # Salva no CSV
             save_result = csv_manager.save_data(
+                data=data,
                 file_key='confirmed_planets',
                 append=True,
                 source='api'
             )
 
             return jsonify({
-                "message": "Exoplanetas confirmados recuperados com sucesso",
+                "message": "Confirmed exoplanets successfully retrieved",
                 "csv_info": save_result,
             })
 
@@ -96,51 +84,38 @@ def configure_exoplanet_endpoints(app):
 
     @app.route('/api/exoplanets/koi', methods=['GET'])
     def get_koi_candidates():
-        """
-        Busca candidatos KOI (Kepler Objects of Interest)
 
-        Returns:
-            JSON com candidatos KOI
-        """
         try:
 
             data = exoplanet_service.fetch_koi_candidates()
 
             if data is None or len(data) == 0:
                 return jsonify({
-                    "error": "Nenhum candidato KOI encontrado"
+                    "error": "No KOI candidates found"
                 }), 404
 
             # Salva no CSV (adicionar método save_koi_candidates ao csv_manager)
             try:
                 save_result = csv_manager.save_koi_candidates(data)
-                logger.info(f"✓ {len(data)} candidatos salvos no CSV")
+                logger.info(f"✓ {len(data)} candidates saved in CSV")
             except Exception as e:
                 logger.warning(f"Erro ao salvar KOI no CSV: {e}")
                 save_result = {"success": False, "error": str(e)}
 
             return jsonify({
-                "message": "Candidatos KOI recuperados com sucesso",
+                "message": "KOI candidates successfully retrieved",
                 "total": len(data),
                 "csv_info": save_result,
                 "data": data
             }), 200
 
         except Exception as e:
-            logger.error(f"Erro no endpoint /api/exoplanets/koi: {e}", exc_info=True)
+            logger.error(f"Error  endpoint /api/exoplanets/koi: {e}", exc_info=True)
             return jsonify({"error": str(e)}), 500
 
     @app.route('/api/exoplanets/<planet_name>', methods=['GET'])
     def get_exoplanet_by_name(planet_name):
-        """
-        Busca um exoplaneta específico por nome
 
-        Args:
-            planet_name (str): Nome do exoplaneta
-
-        Returns:
-            JSON com dados do exoplaneta
-        """
         try:
             logger.info(f"Buscando exoplaneta: {planet_name}")
 
@@ -162,17 +137,12 @@ def configure_exoplanet_endpoints(app):
 
     @app.route('/api/memory/stats', methods=['GET'])
     def get_memory_stats():
-        """
-        Retorna estatísticas da memória da IA
 
-        Returns:
-            JSON com estatísticas de memória
-        """
         try:
             stats = ai_memory.get_memory_stats()
 
             return jsonify({
-                "message": "Estatísticas da memória recuperadas",
+                "message": "Memory statistics retrieved",
                 "stats": stats
             })
 
@@ -182,17 +152,12 @@ def configure_exoplanet_endpoints(app):
 
     @app.route('/api/memory/clear', methods=['POST'])
     def clear_memory():
-        """
-        Limpa toda a memória da IA
 
-        Returns:
-            JSON com confirmação
-        """
         try:
             ai_memory.clear_memory()
 
             return jsonify({
-                "message": "Memória da IA limpa com sucesso"
+                "message": "AI sucesso"
             })
 
         except Exception as e:
@@ -201,18 +166,13 @@ def configure_exoplanet_endpoints(app):
 
     @app.route('/api/data/stats', methods=['GET'])
     def get_data_stats():
-        """
-        Retorna estatísticas completas dos arquivos CSV
 
-        Returns:
-            JSON com estatísticas detalhadas
-        """
         try:
             stats = csv_manager.get_file_stats()
             summary = csv_manager.get_data_summary()
 
             return jsonify({
-                "message": "Estatísticas recuperadas com sucesso",
+                "message": " sucess",
                 "file_stats": stats,
                 "data_summary": summary
             })
@@ -221,4 +181,4 @@ def configure_exoplanet_endpoints(app):
             logger.error(f"Erro no endpoint /api/data/stats: {e}", exc_info=True)
             return jsonify({"error": str(e)}), 500
 
-    logger.info("✓ Endpoints de exoplanetas configurados")
+    logger.info("✓ Endpoints de exoplanets configured")
