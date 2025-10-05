@@ -1,0 +1,76 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environment
+venv/
+env/
+ENV/
+.venv
+
+# IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+*.swn
+.DS_Store
+
+# Project specific - IMPORTANTE: não fazer commit da pasta data
+data/
+backups/
+exports/
+logs/
+*.pkl
+*.joblib
+*.fits
+*.h5
+*.csv
+*.json
+
+# EXCEÇÕES: Manter alguns arquivos de configuração
+!railway.json
+!requirements.txt
+!package.json
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Railway
+.railway/
+
+# Cache de lightkurve
+lightcurve_cache/
+lightcurves/
