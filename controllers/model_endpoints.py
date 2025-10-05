@@ -112,4 +112,22 @@ def configure_model_endpoints(app):
             logger.error(f"Erro no endpoint /api/model/history: {e}")
             return jsonify({"error": str(e)}), 500
 
+    @app.route('/api/model/evaluate', methods=['POST'])
+    def evaluate_model():
+        """Avalia o modelo treinado com dados de teste"""
+        try:
+            data = request.get_json()
+            test_data = data.get('test_data') if data else None
 
+            result = model_service.evaluate_model(test_data)
+
+            if 'error' in result:
+                return jsonify(result), 400
+
+            return jsonify({
+                "message": "Avaliação do modelo realizada com sucesso",
+                "evaluation": result
+            })
+        except Exception as e:
+            logger.error(f"Erro no endpoint /api/model/evaluate: {e}")
+            return jsonify({"error": str(e)}), 500

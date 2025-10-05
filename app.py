@@ -45,7 +45,7 @@ class ExoplanetAPI:
     def fetch_exoplanet_confirmed(app):
         """Busca dados de exoplanetas da API"""
         try:
-            logger.info("Buscando dados de exoplanetas...")
+            logger.info("Buscando dados de exoplanetas confirmados ...")
             response = requests.get(NASA_API_CONFIRMED, timeout=30)
             response.raise_for_status()
             data = response.json()

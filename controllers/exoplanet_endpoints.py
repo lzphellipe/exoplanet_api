@@ -6,6 +6,7 @@ from flask import jsonify, request, config
 import logging
 
 import app
+from services import csv_manager
 from services.exoplanet_service import ExoplanetService
 from models.ai_memory import AIMemory
 
@@ -27,7 +28,7 @@ def configure_exoplanet_endpoints(app):
                 return jsonify({"error": "Falha ao buscar dados"}), 500
 
             # Armazena na memória da IA
-            ai_memory.store_training_data(data)
+            csv_manager.save_exoplanets_data(data)
 
             return jsonify({
                 "message": "Dados recuperados e armazenados na memória da IA",
@@ -83,14 +84,17 @@ def configure_exoplanet_endpoints(app):
 
 
 
-@app.route('/api/confirmed', methods=['GET'])
+@app.route('/api/exoplanets/confirmed', methods=['GET'])
 def fetch_confirmed(self):
         """Busca dados da API de exoplanetas confirmados e salva em JSON."""
         self.logger.info("Iniciando fetch de dados confirmados")
         try:
-           confirmed = exoplanet_service.get_exoplanets_confirmed()
-           if confirmed is None:
+           data = exoplanet_service.get_exoplanets_confirmed()
+           csv_manager.save_confirmed_planets_data(data)
+
+           if data is None:
                return jsonify({"error": "Falha ao buscar dados"}),404
+
            return jsonify({
                "message": "Confirmado com sucesso",
            })
