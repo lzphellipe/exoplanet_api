@@ -1,11 +1,11 @@
 from flask import jsonify, request
 import logging
-from services.model_service import ModelService
+from services.lightGBM_service import LightGBMService
 from models.ai_memory import AIMemory
 
 logger = logging.getLogger(__name__)
 
-model_service = ModelService()
+model_service = LightGBMService()
 ai_memory = AIMemory()
 
 

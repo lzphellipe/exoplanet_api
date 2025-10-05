@@ -29,11 +29,24 @@ class ExoplanetAPI:
         self.model = None
         self.features = None
 
-    def fetch_exoplanet_data(self):
+    def fetch_exoplanet_data(app):
         """Busca dados de exoplanetas da API"""
         try:
             logger.info("Buscando dados de exoplanetas...")
             response = requests.get(EXOPLANET_URL, timeout=30)
+            response.raise_for_status()
+            data = response.json()
+            logger.info(f"Dados recuperados: {len(data)} registros")
+            return data
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Erro ao buscar dados: {e}")
+            return None
+
+    def fetch_exoplanet_confirmed(app):
+        """Busca dados de exoplanetas da API"""
+        try:
+            logger.info("Buscando dados de exoplanetas...")
+            response = requests.get(NASA_API_CONFIRMED, timeout=30)
             response.raise_for_status()
             data = response.json()
             logger.info(f"Dados recuperados: {len(data)} registros")
@@ -249,10 +262,21 @@ def health_check():
     """Health check da API"""
     return jsonify({"status": "healthy", "service": "Exoplanet API"})
 
-@app.route('/confirmed', methods=['GET'])
+@app.route('/api/exoplanets/confirmed', methods=['GET'])
 def fetch_confirmed():
-    return jsonify({"status": "confirmed", "service": "Exoplanet API"})
+    try:
+        data = exoplanet_api.fetch_exoplanet_confirmed()
+        if data is None:
+            return jsonify({"error": "Falha ao buscar dados"}), 500
 
+        return jsonify({
+            "message": "Dados recuperados com sucesso",
+            "count": len(data),
+            "data": data
+        })
+    except Exception as e:
+        logger.error(f"Erro no endpoint /exoplanets/confirmed: {e}")
+        return jsonify({"error": str(e)}), 500
 
 
 if __name__ == '__main__':

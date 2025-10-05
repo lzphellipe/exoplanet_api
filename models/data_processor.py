@@ -55,7 +55,7 @@ class DataProcessor:
             for col in categorical_cols:
                 if col in df_filtered.columns:
                     self.label_encoders[col] = LabelEncoder()
-                    df_filtered[col] = self.label_encoders[col].fit_transform(
+                    df_filtered[col].col = self.label_encoders[col].fit_transform(
                         df_filtered[col].astype(str)
                     )
 
@@ -74,19 +74,19 @@ class DataProcessor:
         try:
             # Densidade estelar aproximada
             if 'st_mass' in df.columns and 'st_rad' in df.columns:
-                df['st_density'] = df['st_mass'] / (df['st_rad'] ** 3)
+                df['st_density'].loc = df['st_mass'] / (df['st_rad'] ** 3)
 
             # Razão raio planeta/estrela
             if 'pl_rade' in df.columns and 'st_rad' in df.columns:
-                df['pl_st_ratio'] = df['pl_rade'] / df['st_rad']
+                df['pl_st_ratio'].loc = df['pl_rade'] / df['st_rad']
 
             # Velocidade orbital aproximada
             if 'pl_orbper' in df.columns and 'pl_orbsmax' in df.columns:
-                df['orbital_velocity'] = (2 * np.pi * df['pl_orbsmax']) / df['pl_orbper']
+                df['orbital_velocity'].loc = (2 * np.pi * df['pl_orbsmax']) / df['pl_orbper']
 
             # Fluxo estelar recebido pelo planeta
             if 'st_teff' in df.columns and 'pl_orbsmax' in df.columns:
-                df['received_flux'] = (df['st_teff'] ** 4) / (df['pl_orbsmax'] ** 2)
+                df['received_flux'].loc = (df['st_teff'] ** 4) / (df['pl_orbsmax'] ** 2)
 
             return df
 
@@ -143,3 +143,5 @@ class DataProcessor:
         except Exception as e:
             self.logger.error(f"Erro ao carregar/processar {file_path}: {e}")
             raise
+
+

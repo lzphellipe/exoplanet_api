@@ -97,4 +97,3 @@ def fetch_confirmed(self):
         except Exception as e:
             logger.error(f"Erro no endpoint /api/confirmed: {e}")
             return jsonify({"error": str(e)}), 500
-

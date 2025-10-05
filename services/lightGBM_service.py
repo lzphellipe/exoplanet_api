@@ -9,7 +9,7 @@ from models.ai_memory import AIMemory
 logger = logging.getLogger(__name__)
 
 
-class ModelService:
+class LightGBMService:
     def __init__(self):
         self.data_processor = DataProcessor()
         self.ai_memory = AIMemory()

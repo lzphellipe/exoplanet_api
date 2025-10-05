@@ -1,5 +1,9 @@
+from http.client import HTTPException
+
 from flask import jsonify, request
 import logging
+
+from app import app
 from services.lightkurve_service import LightkurveService
 
 logger = logging.getLogger(__name__)
@@ -56,3 +60,17 @@ def configure_lightkurve_endpoints(app):
         except Exception as e:
             logger.error(f"Erro no endpoint /api/lightcurves/download/{target_name}: {e}")
             return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/lightkurve/confirmed", methods=['GET'])
+async def fetch_lightkurve_features():
+    try:
+        lightkurve_service = LightkurveService()
+        features_df = lightkurve_service.process_dataset("confirmed", max_samples=10)
+        return {
+            "message": "Features de curvas de luz processadas",
+            "features": features_df.to_dict(orient="records")
+        }
+    except Exception as e:
+        logger.error(f"Erro ao processar curvas de luz: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
