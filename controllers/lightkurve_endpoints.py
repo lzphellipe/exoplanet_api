@@ -1,9 +1,10 @@
+"""
+Endpoints de Light Curves - Corrigido (sem import circular)
+"""
 from http.client import HTTPException
-
 from flask import jsonify, request
 import logging
 
-from app import app
 from services.lightkurve_service import LightkurveService
 
 logger = logging.getLogger(__name__)
@@ -33,6 +34,7 @@ def configure_lightkurve_endpoints(app):
                 "message": "Light curves encontradas",
                 "data": result
             })
+
         except Exception as e:
             logger.error(f"Erro no endpoint /api/lightcurves/search/{target_name}: {e}")
             return jsonify({"error": str(e)}), 500
@@ -57,20 +59,27 @@ def configure_lightkurve_endpoints(app):
                 "message": "Light curve baixada com sucesso",
                 "data": result
             })
+
         except Exception as e:
             logger.error(f"Erro no endpoint /api/lightcurves/download/{target_name}: {e}")
             return jsonify({"error": str(e)}), 500
 
+    @app.route("/api/lightkurve/confirmed", methods=['GET'])
+    def fetch_lightkurve_features():
+        """Processa features de curvas de luz para planetas confirmados"""
+        try:
+            features_df = lightkurve_service.process_dataset("confirmed", max_samples=10)
 
-@app.route("/api/lightkurve/confirmed", methods=['GET'])
-async def fetch_lightkurve_features():
-    try:
-        lightkurve_service = LightkurveService()
-        features_df = lightkurve_service.process_dataset("confirmed", max_samples=10)
-        return {
-            "message": "Features de curvas de luz processadas",
-            "features": features_df.to_dict(orient="records")
-        }
-    except Exception as e:
-        logger.error(f"Erro ao processar curvas de luz: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+            return jsonify({
+                "message": "Features de curvas de luz processadas",
+                "features": features_df.to_dict(orient="records")
+            })
+
+        except Exception as e:
+            logger.error(f"Erro ao processar curvas de luz: {e}")
+            return jsonify({
+                "error": str(e),
+                "message": "Erro ao processar curvas de luz"
+            }), 500
+
+    logger.info("✓ Endpoints de lightkurve configurados")

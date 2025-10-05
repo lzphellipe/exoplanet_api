@@ -1,0 +1,112 @@
+{
+  "created_at": "2025-10-05T12:56:38.316325",
+  "last_updated": "2025-10-05T13:54:24.041032",
+  "files": {
+    "exoplanets": {
+      "created_at": "2025-10-05T13:09:29.871670",
+      "last_updated": "2025-10-05T13:20:59.702658",
+      "total_operations": 2,
+      "total_records": 701,
+      "operations_history": [
+        {
+          "timestamp": "2025-10-05T13:09:29.871670",
+          "operation": "create",
+          "records_count": 701,
+          "source": "api"
+        },
+        {
+          "timestamp": "2025-10-05T13:20:59.702658",
+          "operation": "update",
+          "records_count": 701,
+          "source": "api"
+        }
+      ],
+      "last_operation": "update",
+      "last_source": "api"
+    },
+    "confirmed_planets": {
+      "created_at": "2025-10-05T13:10:11.016861",
+      "last_updated": "2025-10-05T13:10:11.016861",
+      "total_operations": 1,
+      "total_records": 4499,
+      "operations_history": [
+        {
+          "timestamp": "2025-10-05T13:10:11.016861",
+          "operation": "create",
+          "records_count": 4499,
+          "source": "api"
+        }
+      ],
+      "last_operation": "create",
+      "last_source": "api"
+    },
+    "koi_candidates": {
+      "created_at": "2025-10-05T13:11:10.727968",
+      "last_updated": "2025-10-05T13:54:24.041032",
+      "total_operations": 8,
+      "total_records": 7326,
+      "operations_history": [
+        {
+          "timestamp": "2025-10-05T13:11:10.727968",
+          "operation": "create",
+          "records_count": 10,
+          "source": "api"
+        },
+        {
+          "timestamp": "2025-10-05T13:11:58.731641",
+          "operation": "update",
+          "records_count": 10,
+          "source": "api"
+        },
+        {
+          "timestamp": "2025-10-05T13:35:58.439229",
+          "operation": "update",
+          "records_count": 9201,
+          "source": "api"
+        },
+        {
+          "timestamp": "2025-10-05T13:40:35.444936",
+          "operation": "update",
+          "records_count": 9201,
+          "source": "api"
+        },
+        {
+          "timestamp": "2025-10-05T13:47:07.258148",
+          "operation": "update",
+          "records_count": 9201,
+          "source": "api"
+        },
+        {
+          "timestamp": "2025-10-05T13:48:26.368894",
+          "operation": "update",
+          "records_count": 9201,
+          "source": "api"
+        },
+        {
+          "timestamp": "2025-10-05T13:50:20.546741",
+          "operation": "create",
+          "records_count": 7326,
+          "source": "api"
+        },
+        {
+          "timestamp": "2025-10-05T13:54:24.041032",
+          "operation": "create",
+          "records_count": 7326,
+          "source": "api"
+        }
+      ],
+      "last_operation": "create",
+      "last_source": "api"
+    }
+  },
+  "statistics": {
+    "total_operations": 11,
+    "total_records_stored": 12526,
+    "last_operation": {
+      "timestamp": "2025-10-05T13:54:24.041032",
+      "operation": "create",
+      "records_count": 7326,
+      "source": "api"
+    }
+  }
+}

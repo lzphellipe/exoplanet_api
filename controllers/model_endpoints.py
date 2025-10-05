@@ -1,5 +1,9 @@
+"""
+Endpoints de Modelo ML - Corrigido (sem import circular)
+"""
 from flask import jsonify, request
 import logging
+
 from services.lightGBM_service import LightGBMService
 from models.ai_memory import AIMemory
 
@@ -24,6 +28,7 @@ def configure_model_endpoints(app):
                 return jsonify(result), 400
 
             return jsonify(result)
+
         except Exception as e:
             logger.error(f"Erro no endpoint /api/model/train: {e}")
             return jsonify({"error": str(e)}), 500
@@ -50,7 +55,7 @@ def configure_model_endpoints(app):
             prediction_record = {
                 "features": features,
                 "prediction": result["prediction"],
-                "probability": result["probability"],
+                "probability": result.get("probability"),
                 "timestamp": result.get("timestamp")
             }
             ai_memory.store_prediction(prediction_record)
@@ -60,6 +65,7 @@ def configure_model_endpoints(app):
                 "prediction": result,
                 "memory_stats": ai_memory.get_memory_stats()
             })
+
         except Exception as e:
             logger.error(f"Erro no endpoint /api/model/predict: {e}")
             return jsonify({"error": str(e)}), 500
@@ -77,6 +83,7 @@ def configure_model_endpoints(app):
                 "message": "Informações do modelo",
                 "data": result
             })
+
         except Exception as e:
             logger.error(f"Erro no endpoint /api/model/info: {e}")
             return jsonify({"error": str(e)}), 500
@@ -94,6 +101,7 @@ def configure_model_endpoints(app):
                 "message": "Importância das features",
                 "data": result
             })
+
         except Exception as e:
             logger.error(f"Erro no endpoint /api/model/features/importance: {e}")
             return jsonify({"error": str(e)}), 500
@@ -103,11 +111,13 @@ def configure_model_endpoints(app):
         """Retorna histórico de modelos treinados"""
         try:
             history = ai_memory.get_model_history()
+
             return jsonify({
                 "message": "Histórico de modelos",
                 "count": len(history),
                 "data": history
             })
+
         except Exception as e:
             logger.error(f"Erro no endpoint /api/model/history: {e}")
             return jsonify({"error": str(e)}), 500
@@ -128,6 +138,9 @@ def configure_model_endpoints(app):
                 "message": "Avaliação do modelo realizada com sucesso",
                 "evaluation": result
             })
+
         except Exception as e:
             logger.error(f"Erro no endpoint /api/model/evaluate: {e}")
             return jsonify({"error": str(e)}), 500
+
+    logger.info("✓ Endpoints de modelo ML configurados")
