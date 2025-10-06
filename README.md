@@ -678,6 +678,5 @@ make test
 ---
 
 **Project Status**: Production Ready ✅  
-**Version**: 2.0.0  
-**Last Updated**: January 2025  
+**Version**: 1.0.0 
 **Maintained**: Yes 🟢
