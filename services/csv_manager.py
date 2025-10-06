@@ -253,59 +253,45 @@ class CSVManager:
 
     def save_confirmed_planets_data(self, data: List[Dict], append: bool = True,
                                     source: str = "api") -> Dict[str, Any]:
-        """Salva dados de planetas confirmados"""
         return self.save_data(data, 'confirmed_planets', append, source)
 
     def save_koi_candidates(self, data: List[Dict], append: bool = True,
                             source: str = "api") -> Dict[str, Any]:
-        """Salva candidatos KOI"""
         return self.save_data(data, 'koi_candidates', append, source,
                               unique_column='kepoi_name')
 
     def load_data(self, file_key: str) -> pd.DataFrame:
-        """
-        Carrega dados de um CSV específico
 
-        Args:
-            file_key: Chave do arquivo a carregar
-
-        Returns:
-            DataFrame com os dados
-        """
         try:
             if file_key not in self.files:
-                logger.error(f"file_key inválido: {file_key}")
+                logger.error(f"file_key invalid: {file_key}")
                 return pd.DataFrame()
 
             file_path = self.files[file_key]
 
             if file_path.exists():
                 df = pd.read_csv(file_path)
-                logger.info(f"{file_key}: carregados {len(df)} registros")
+                logger.info(f"{file_key}: upload {len(df)} rows")
                 return df
             else:
-                logger.warning(f"Arquivo {file_key} não encontrado")
+                logger.warning(f"Archive {file_key} não encontrado")
                 return pd.DataFrame()
 
         except Exception as e:
-            logger.error(f"Erro ao carregar {file_key}: {e}")
+            logger.error(f"Error loading {file_key}: {e}")
             return pd.DataFrame()
 
     # Métodos de conveniência para load
     def load_exoplanets_data(self) -> pd.DataFrame:
-        """Carrega dados de exoplanetas"""
         return self.load_data('exoplanets')
 
     def load_confirmed_planets_data(self) -> pd.DataFrame:
-        """Carrega dados de planetas confirmados"""
         return self.load_data('confirmed_planets')
 
     def load_koi_candidates(self) -> pd.DataFrame:
-        """Carrega candidatos KOI"""
         return self.load_data('koi_candidates')
 
     def get_file_stats(self) -> Dict[str, Any]:
-        """Retorna estatísticas detalhadas dos arquivos"""
         stats = {
             'data_directory': str(self.data_dir.absolute()),
             'files': {},
@@ -360,7 +346,6 @@ class CSVManager:
         return stats
 
     def get_data_summary(self) -> Dict[str, Any]:
-        """Retorna resumo completo dos dados"""
         try:
             summary = {}
 
@@ -377,11 +362,10 @@ class CSVManager:
             return summary
 
         except Exception as e:
-            logger.error(f"Erro ao gerar resumo: {e}")
+            logger.error(f"Error generating summary: {e}")
             return {}
 
     def create_backup(self, backup_name: str = None) -> Dict[str, Any]:
-        """Cria backup dos dados atuais"""
         try:
             if backup_name is None:
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -419,7 +403,7 @@ class CSVManager:
 
             self._save_backup_index(backup_index)
 
-            logger.info(f"✓ Backup '{backup_name}' criado com {len(files_copied)} arquivos")
+            logger.info(f"✓ Backup '{backup_name}' created {len(files_copied)} archives")
 
             return {
                 "success": True,
@@ -429,27 +413,24 @@ class CSVManager:
             }
 
         except Exception as e:
-            logger.error(f"Erro ao criar backup: {e}")
+            logger.error(f"Error creating backup: {e}")
             return {"success": False, "error": str(e)}
 
     def list_backups(self) -> List[Dict[str, Any]]:
-        """Lista todos os backups disponíveis"""
         try:
             backup_index = self._load_backup_index()
             return backup_index.get('backups', [])
         except Exception as e:
-            logger.error(f"Erro ao listar backups: {e}")
+            logger.error(f"Error listing backups: {e}")
             return []
 
     def restore_backup(self, backup_name: str) -> Dict[str, Any]:
-        """Restaura dados de um backup"""
         try:
             backup_dir = self.data_dir / "backups" / backup_name
 
             if not backup_dir.exists():
-                return {"success": False, "error": f"Backup '{backup_name}' não encontrado"}
+                return {"success": False, "error": f"Backup '{backup_name}' not found"}
 
-            # Cria backup antes de restaurar
             self.create_backup(f"pre_restore_{datetime.now().strftime('%Y%m%d_%H%M%S')}")
 
             files_restored = []
@@ -460,7 +441,7 @@ class CSVManager:
                         shutil.copy2(file_path, target_file)
                         files_restored.append(file_path.name)
 
-            logger.info(f"✓ Backup '{backup_name}' restaurado")
+            logger.info(f"✓ Backup '{backup_name}' restored")
 
             return {
                 "success": True,
@@ -469,5 +450,5 @@ class CSVManager:
             }
 
         except Exception as e:
-            logger.error(f"Erro ao restaurar backup: {e}")
+            logger.error(f"Error restoring backup: {e}")
             return {"success": False, "error": str(e)}

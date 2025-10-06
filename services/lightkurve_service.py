@@ -1,531 +1,307 @@
-"""
-Lightkurve Service - COM RETRY AUTOMÁTICO
-Trata erros de transação do MAST Archive
-"""
 import pandas as pd
 import lightkurve as lk
 import numpy as np
 import os
 import logging
-from pathlib import Path
-import time
-from typing import Optional, Dict, Any
+import json
 
 logger = logging.getLogger(__name__)
 
 
-class Config:
-    """Configuração local para lightkurve service"""
-    def __init__(self):
-        self.data_dir = os.path.join(os.getcwd(), "data")
-        os.makedirs(self.data_dir, exist_ok=True)
-        os.makedirs(os.path.join(self.data_dir, "lightcurves"), exist_ok=True)
-        logger.info(f"Diretório de dados: {self.data_dir}")
-
-
-config = Config()
-
-
 class LightkurveService:
-    """Serviço para buscar light curves com retry automático"""
+    def __init__(self, data_dir: str = "data"):
+        """Initialize LightkurveService with directories and logging.
 
-    def __init__(self):
+        Args:
+            data_dir (str): Directory for data storage. Defaults to 'data'.
+        """
         self.logger = logging.getLogger(__name__)
-        self.data_dir = config.data_dir
-        self.lightcurve_dir = os.path.join(self.data_dir, "lightcurves")
-        self.features_file = os.path.join(self.data_dir, "lightkurve_features.csv")
-
-        # Configurações de retry
-        self.max_retries = 3
-        self.retry_delay = 2  # segundos
-        self.backoff_factor = 2  # multiplicador do delay a cada retry
-
+        self.data_dir = data_dir
+        self.lightcurve_dir = os.path.join(data_dir, "lightcurves")
+        self.features_file = os.path.join(data_dir, "lightkurve_features.csv")
         os.makedirs(self.data_dir, exist_ok=True)
         os.makedirs(self.lightcurve_dir, exist_ok=True)
 
-        self.logger.info(f"LightkurveService inicializado")
-        self.logger.info(f"  - Data dir: {self.data_dir}")
-        self.logger.info(f"  - Max retries: {self.max_retries}")
-
-    def _validate_target_mission(self, target_name: str, mission: str) -> Dict[str, Any]:
-        """
-        Valida se o target é compatível com a missão
+    def preprocess_train_data(self, dataset_path: str, max_samples: int = None,
+                              mission: str = "Kepler") -> pd.DataFrame:
+        """Load and preprocess Kepler/TESS light curve data for training.
 
         Args:
-            target_name: Nome do alvo
-            mission: Missão (TESS, Kepler, K2)
+            dataset_path (str): Path to the CSV/JSON file containing training data.
+            max_samples (int, optional): Maximum number of samples to process.
+            mission (str): Data mission (e.g., 'Kepler', 'TESS'). Defaults to 'Kepler'.
 
         Returns:
-            Dict com validação e sugestões
+            pd.DataFrame: Processed light curve data with flux, label, and identifier.
         """
-        target_lower = target_name.lower()
-        mission_upper = mission.upper()
-
-        warnings = []
-        suggestions = []
-
-        # Detecta missão pelo nome
-        if 'kepler' in target_lower or 'koi' in target_lower or 'kic' in target_lower:
-            expected_mission = 'Kepler'
-            if mission_upper == 'TESS':
-                warnings.append(f"'{target_name}' parece ser um alvo Kepler, mas missão especificada é TESS")
-                suggestions.append(f"Tente mission='Kepler' ou mission='K2'")
-
-        elif 'toi' in target_lower or 'tic' in target_lower:
-            expected_mission = 'TESS'
-            if mission_upper != 'TESS':
-                warnings.append(f"'{target_name}' parece ser um alvo TESS, mas missão especificada é {mission}")
-                suggestions.append(f"Tente mission='TESS'")
-
-        return {
-            'valid': len(warnings) == 0,
-            'warnings': warnings,
-            'suggestions': suggestions
-        }
-
-    def _retry_operation(self, operation, *args, **kwargs):
-        """
-        Executa operação com retry automático
-
-        Args:
-            operation: Função a executar
-            *args, **kwargs: Argumentos para a função
-
-        Returns:
-            Resultado da operação ou None se todas as tentativas falharem
-        """
-        last_error = None
-        delay = self.retry_delay
-
-        for attempt in range(self.max_retries):
-            try:
-                result = operation(*args, **kwargs)
-
-                if attempt > 0:
-                    self.logger.info(f"✓ Sucesso na tentativa {attempt + 1}")
-
-                return result
-
-            except Exception as e:
-                last_error = e
-                error_msg = str(e).lower()
-
-                # Verifica se é erro de transação SQL (retry-able)
-                is_transaction_error = any([
-                    'transaction' in error_msg,
-                    'availability replica' in error_msg,
-                    'ghost records' in error_msg,
-                    'snapshot isolation' in error_msg
-                ])
-
-                # Verifica se é erro de timeout (retry-able)
-                is_timeout_error = any([
-                    'timeout' in error_msg,
-                    'timed out' in error_msg
-                ])
-
-                # Verifica se é erro de conexão (retry-able)
-                is_connection_error = any([
-                    'connection' in error_msg,
-                    'network' in error_msg
-                ])
-
-                should_retry = is_transaction_error or is_timeout_error or is_connection_error
-
-                if should_retry and attempt < self.max_retries - 1:
-                    self.logger.warning(
-                        f"⚠️ Tentativa {attempt + 1}/{self.max_retries} falhou: {e}"
-                    )
-                    self.logger.info(f"⏳ Aguardando {delay}s antes de retentar...")
-                    time.sleep(delay)
-                    delay *= self.backoff_factor  # Aumenta delay exponencialmente
-                else:
-                    # Última tentativa ou erro não retry-able
-                    if should_retry:
-                        self.logger.error(
-                            f"✗ Todas as {self.max_retries} tentativas falharam"
-                        )
-                    else:
-                        self.logger.error(f"✗ Erro não retry-able: {e}")
-                    break
-
-        return None
-
-    def search_lightcurves(self, target_name: str, mission: str = "TESS",
-                          quarter: int = None, campaign: int = None) -> dict:
-        """
-        Busca light curves COM RETRY automático
-
-        Args:
-            target_name: Nome do alvo
-            mission: Missão (TESS, Kepler, K2)
-            quarter: Quarter (Kepler)
-            campaign: Campaign (K2)
-
-        Returns:
-            Dict com resultados ou erro
-        """
+        self.logger.info(f"Preprocessing training dataset: {dataset_path}")
         try:
-            self.logger.info(f"Buscando light curves para {target_name} (missão: {mission})")
-
-            # Valida target vs missão
-            validation = self._validate_target_mission(target_name, mission)
-            if not validation['valid']:
-                self.logger.warning(f"Validação: {validation['warnings'][0]}")
-
-            # Busca com retry
-            def search_operation():
-                return lk.search_lightcurve(target_name, mission=mission)
-
-            search_result = self._retry_operation(search_operation)
-
-            if search_result is None:
-                return {
-                    "error": f"Falha ao buscar light curves após {self.max_retries} tentativas",
-                    "target": target_name,
-                    "mission": mission,
-                    "validation": validation if not validation['valid'] else None
-                }
-
-            if len(search_result) == 0:
-                error_response = {
-                    "error": f"Nenhuma light curve encontrada para {target_name}",
-                    "target": target_name,
-                    "mission": mission
-                }
-
-                # Adiciona sugestões se houver problema de missão
-                if not validation['valid']:
-                    error_response['suggestions'] = validation['suggestions']
-
-                return error_response
-
-            # Filtra por quarter/campaign se especificado
-            if quarter is not None:
-                search_result = search_result[search_result.quarter == quarter]
-            if campaign is not None:
-                search_result = search_result[search_result.campaign == campaign]
-
-            if len(search_result) == 0:
-                return {
-                    "error": "Nenhuma light curve encontrada com os filtros",
-                    "target": target_name,
-                    "mission": mission,
-                    "quarter": quarter,
-                    "campaign": campaign
-                }
-
-            # Converte resultado
-            results = []
-            for i, item in enumerate(search_result):
-                result_info = {
-                    "index": i,
-                    "target_name": target_name,
-                    "mission": str(item.mission),
-                    "author": str(item.author) if hasattr(item, 'author') else None,
-                    "exptime": str(item.exptime) if hasattr(item, 'exptime') else None,
-                }
-
-                if hasattr(item, 'quarter'):
-                    result_info['quarter'] = int(item.quarter)
-                if hasattr(item, 'campaign'):
-                    result_info['campaign'] = int(item.campaign)
-
-                results.append(result_info)
-
-            self.logger.info(f"✓ {len(results)} light curve(s) encontrada(s)")
-
-            return {
-                "target": target_name,
-                "mission": mission,
-                "count": len(results),
-                "results": results,
-                "validation": validation if not validation['valid'] else None
-            }
-
-        except Exception as e:
-            self.logger.error(f"Erro ao buscar light curves: {e}", exc_info=True)
-            return {
-                "error": str(e),
-                "target": target_name,
-                "mission": mission,
-                "error_type": type(e).__name__
-            }
-
-    def download_lightcurve(self, target_name: str, mission: str = "TESS",
-                           index: int = 0, quarter: int = None,
-                           campaign: int = None) -> dict:
-        """
-        Download de light curve COM RETRY automático
-
-        Args:
-            target_name: Nome do alvo
-            mission: Missão
-            index: Índice da light curve
-            quarter: Quarter
-            campaign: Campaign
-
-        Returns:
-            Dict com dados ou erro
-        """
-        try:
-            self.logger.info(f"Baixando light curve {index} para {target_name}")
-
-            # Busca com retry
-            def search_operation():
-                return lk.search_lightcurve(target_name, mission=mission)
-
-            search_result = self._retry_operation(search_operation)
-
-            if search_result is None:
-                return {
-                    "error": f"Falha ao buscar após {self.max_retries} tentativas",
-                    "target": target_name
-                }
-
-            if len(search_result) == 0:
-                return {
-                    "error": f"Nenhuma light curve encontrada",
-                    "target": target_name
-                }
-
-            # Filtra
-            if quarter is not None:
-                search_result = search_result[search_result.quarter == quarter]
-            if campaign is not None:
-                search_result = search_result[search_result.campaign == campaign]
-
-            if index >= len(search_result):
-                return {
-                    "error": f"Índice {index} fora do range (0-{len(search_result)-1})",
-                    "target": target_name
-                }
-
-            # Download com retry
-            def download_operation():
-                return search_result[index].download()
-
-            lc = self._retry_operation(download_operation)
-
-            if lc is None:
-                return {
-                    "error": "Falha no download após múltiplas tentativas",
-                    "target": target_name
-                }
-
-            # Salva
-            safe_filename = target_name.replace(" ", "_").replace("/", "_")
-            fits_path = os.path.join(
-                self.lightcurve_dir,
-                f"{safe_filename}_lc_{index}.fits"
-            )
-            lc.to_fits(fits_path, overwrite=True)
-
-            # Extrai dados
-            time_data = lc.time.value.tolist() if hasattr(lc, 'time') else []
-            flux_data = lc.flux.value.tolist() if hasattr(lc, 'flux') else []
-
-            # Limita pontos
-            if len(time_data) > 1000:
-                step = len(time_data) // 1000
-                time_data = time_data[::step]
-                flux_data = flux_data[::step]
-
-            self.logger.info(f"✓ Light curve salva em {fits_path}")
-
-            return {
-                "target": target_name,
-                "mission": mission,
-                "index": index,
-                "file_path": fits_path,
-                "data_points": len(lc.time) if hasattr(lc, 'time') else 0,
-                "time_sample": time_data[:100],
-                "flux_sample": flux_data[:100],
-                "statistics": {
-                    "mean_flux": float(np.mean(lc.flux.value)) if hasattr(lc, 'flux') else None,
-                    "std_flux": float(np.std(lc.flux.value)) if hasattr(lc, 'flux') else None,
-                    "min_flux": float(np.min(lc.flux.value)) if hasattr(lc, 'flux') else None,
-                    "max_flux": float(np.max(lc.flux.value)) if hasattr(lc, 'flux') else None
-                }
-            }
-
-        except Exception as e:
-            self.logger.error(f"Erro ao baixar light curve: {e}", exc_info=True)
-            return {
-                "error": str(e),
-                "target": target_name,
-                "mission": mission,
-                "error_type": type(e).__name__
-            }
-
-    def fetch_lightcurve(self, hostname: str, mission: str = "TESS",
-                        max_attempts: int = None) -> Optional[lk.LightCurve]:
-        """
-        Busca light curve COM RETRY
-
-        Args:
-            hostname: Nome da estrela
-            mission: Missão
-            max_attempts: Número de tentativas (usa self.max_retries se None)
-
-        Returns:
-            LightCurve ou None
-        """
-        if max_attempts is None:
-            max_attempts = self.max_retries
-
-        self.logger.info(f"Buscando curva de luz para {hostname} (missão: {mission})")
-
-        def fetch_operation():
-            search_result = lk.search_lightcurve(hostname, mission=mission)
-
-            if len(search_result) == 0:
-                return None
-
-            lightcurve = search_result[0].download()
-
-            # Salva
-            safe_filename = hostname.replace(' ', '_').replace('/', '_')
-            file_path = os.path.join(
-                self.lightcurve_dir,
-                f"{safe_filename}_lightcurve.fits"
-            )
-            lightcurve.to_fits(file_path, overwrite=True)
-
-            self.logger.info(f"✓ Curva de luz salva em {file_path}")
-            return lightcurve
-
-        return self._retry_operation(fetch_operation)
-
-    def extract_features(self, lightcurve: lk.LightCurve) -> dict:
-        """Extrai features de uma light curve"""
-        if lightcurve is None:
-            return {
-                "transit_depth": None,
-                "transit_duration": None,
-                "period": None
-            }
-
-        try:
-            lightcurve = lightcurve.normalize()
-            periodogram = lightcurve.to_periodogram(
-                method="bls",
-                minimum_period=0.5,
-                maximum_period=100
-            )
-            period = periodogram.period_at_max_power.value
-            folded = lightcurve.fold(period=period)
-
-            try:
-                transit_mask = folded.get_transit_mask(period=period)
-                transit_depth = (
-                    np.abs(folded.flux[transit_mask].min() - 1.0)
-                    if transit_mask.any() else None
-                )
-                transit_duration = (
-                    folded.time[transit_mask].ptp() * period
-                    if transit_mask.any() else None
-                )
-            except:
-                transit_depth = None
-                transit_duration = None
-
-            return {
-                "transit_depth": float(transit_depth) if transit_depth else None,
-                "transit_duration": float(transit_duration) if transit_duration else None,
-                "period": float(period)
-            }
-
-        except Exception as e:
-            self.logger.error(f"Erro ao extrair features: {e}")
-            return {
-                "transit_depth": None,
-                "transit_duration": None,
-                "period": None,
-                "error": str(e)
-            }
-
-    def process_dataset(self, dataset: str, max_samples: int = None) -> pd.DataFrame:
-        """Processa dataset com retry automático"""
-        self.logger.info(f"Processando dataset: {dataset}")
-
-        file_path = os.path.join(self.data_dir, f"{dataset}_data.json")
-
-        if not os.path.exists(file_path):
-            csv_path = os.path.join(self.data_dir, f"{dataset}_planets.csv")
-            if os.path.exists(csv_path):
-                file_path = csv_path
+            # Load data
+            if dataset_path.endswith(".json"):
+                data_train = pd.read_json(dataset_path)
             else:
-                self.logger.error(f"Arquivo não encontrado: {file_path}")
-                return pd.DataFrame()
+                data_train = pd.read_csv(dataset_path)
 
-        try:
-            if file_path.endswith('.json'):
-                df = pd.read_json(file_path)
-            else:
-                df = pd.read_csv(file_path)
+            # Define identifier and column names based on mission
+            id_col = "kepid" if mission == "Kepler" else "hostname"
+            period_col = "koi_period" if mission == "Kepler" else "pl_orbper"
+            t0_col = "koi_time0bk" if mission == "Kepler" else "pl_tranmid"
+            duration_col = "koi_duration" if mission == "Kepler" else "pl_trandur"
+            label_col = "koi_disposition" if mission == "Kepler" else "disposition"
 
+            # Keep relevant columns
+            columns = [id_col, label_col, period_col, t0_col, duration_col]
+            if mission == "Kepler":
+                columns.append("koi_quarters")
+            data_train = data_train[columns].copy()
+
+            # Filter for confirmed planets and false positives, drop NaNs
+            data_train = data_train[data_train[label_col].isin(["CONFIRMED", "FALSE POSITIVE"])].copy()
+            data_train = data_train.dropna().reset_index(drop=True)
             if max_samples:
-                df = df.head(max_samples)
+                data_train = data_train.head(max_samples)
 
-            features_list = []
+            # Extract columns
+            identifiers = data_train[id_col].values
+            dispositions = data_train[label_col].values
+            periods = data_train[period_col].values
+            t0s = data_train[t0_col].values
+            durations = data_train[duration_col].values
 
-            for idx, row in df.iterrows():
-                target = (
-                    row.get("tic_id") or
-                    row.get("hostname") or
-                    row.get("pl_name") or
-                    None
-                )
+            curves_finals = []
+            identifiers_finals = []
+            labels_finals = []
 
-                if not target:
-                    continue
+            # Process each target
+            for idx, (identifier, disposition, period, t0, duration) in enumerate(
+                    zip(identifiers, dispositions, periods, t0s, durations)):
+                try:
+                    # Download light curves
+                    lcs = lk.search_lightcurve(str(identifier), mission=mission, cadence='long').download_all()
+                    if lcs is None:
+                        self.logger.warning(f"No light curves for {identifier} (index: {idx})")
+                        continue
 
-                lightcurve = self.fetch_lightcurve(str(target))
-                features = self.extract_features(lightcurve)
-                features["pl_name"] = row.get("pl_name", target)
-                features["target"] = target
+                    # Ensure lcs is a list
+                    if isinstance(lcs, lk.LightCurveCollection):
+                        lcs = list(lcs)
+                    elif isinstance(lcs, lk.LightCurve):
+                        lcs = [lcs]
 
-                features_list.append(features)
+                    # Preprocess light curves
+                    lcs = [lc.remove_nans().remove_outliers(sigma=3).normalize() for lc in lcs]
+                    flattened_curves = []
 
-            features_df = pd.DataFrame(features_list)
-            features_df.to_csv(self.features_file, index=False)
+                    for lc in lcs:
+                        temp_fold = lc.fold(period, epoch_time=t0)
+                        fractional_duration = (duration / 24.0) / period
+                        phase_mask = np.abs(temp_fold.phase.value) < (fractional_duration * 1.5)
+                        transit_mask = np.isin(lc.time.value, temp_fold.time_original.value[phase_mask])
+                        lc_flat, _ = lc.flatten(return_trend=True, mask=transit_mask)
+                        flattened_curves.append(lc_flat)
 
-            self.logger.info(f"✓ {len(features_df)} features salvas")
+                    # Stitch, fold, and bin
+                    lc_stitched = lk.LightCurveCollection(flattened_curves).stitch()
+                    lc_fold = lc_stitched.fold(period, epoch_time=t0)
+                    lc_final = lc_fold.bin(bins=50)
 
-            return features_df
+                    # Standardize flux
+                    flux_mean = np.nanmean(lc_final.flux)
+                    flux_std = np.nanstd(lc_final.flux)
+                    if flux_std == 0 or np.isnan(flux_std):
+                        curve_final = np.array(lc_final.flux.value - flux_mean, dtype=float)
+                    else:
+                        curve_final = np.array((lc_final.flux.value - flux_mean) / flux_std, dtype=float)
 
+                    curves_finals.append(curve_final)
+                    identifiers_finals.append(identifier)
+                    labels_finals.append(disposition)
+
+                except Exception as e:
+                    self.logger.error(f"Error processing {identifier} (index: {idx}): {e}")
+
+            # Create DataFrame
+            data_train_final = pd.DataFrame(curves_finals, dtype=float)
+            data_train_final = data_train_final.interpolate(axis=1)
+            data_train_final["identifier"] = identifiers_finals
+            data_train_final["label"] = labels_finals
+
+            data_train_final.to_csv(self.features_file, index=False)
+            self.logger.info(f"Training features saved to {self.features_file} with {len(data_train_final)} records")
+            return data_train_final
         except Exception as e:
-            self.logger.error(f"Erro: {e}")
+            self.logger.error(f"Error preprocessing training dataset {dataset_path}: {e}")
             raise
 
-    def get_statistics(self) -> dict:
-        """Retorna estatísticas"""
+    def preprocess_test_data(self, dataset_path: str, max_samples: int = None, mission: str = "Kepler") -> pd.DataFrame:
+        """Load and preprocess Kepler/TESS light curve data for testing.
+
+        Args:
+            dataset_path (str): Path to the CSV/JSON file containing test data.
+            max_samples (int, optional): Maximum number of samples to process.
+            mission (str): Data mission (e.g., 'Kepler', 'TESS'). Defaults to 'Kepler'.
+
+        Returns:
+            pd.DataFrame: Processed light curve data with flux and identifier.
+        """
+        self.logger.info(f"Preprocessing test dataset: {dataset_path}")
         try:
-            stats = {
-                "lightcurve_dir": self.lightcurve_dir,
-                "features_file": self.features_file,
-                "lightcurves_saved": 0,
-                "features_available": False,
-                "retry_config": {
-                    "max_retries": self.max_retries,
-                    "retry_delay": self.retry_delay,
-                    "backoff_factor": self.backoff_factor
-                }
-            }
+            # Load data
+            if dataset_path.endswith(".json"):
+                data_test = pd.read_json(dataset_path)
+            else:
+                data_test = pd.read_csv(dataset_path)
 
-            if os.path.exists(self.lightcurve_dir):
-                fits_files = list(Path(self.lightcurve_dir).glob("*.fits"))
-                stats["lightcurves_saved"] = len(fits_files)
+            # Define column names
+            id_col = "kepid" if mission == "Kepler" else "hostname"
+            period_col = "koi_period" if mission == "Kepler" else "pl_orbper"
+            t0_col = "koi_time0bk" if mission == "Kepler" else "pl_tranmid"
+            duration_col = "koi_duration" if mission == "Kepler" else "pl_trandur"
 
-            if os.path.exists(self.features_file):
-                stats["features_available"] = True
-                df = pd.read_csv(self.features_file)
-                stats["features_count"] = len(df)
-                stats["features_columns"] = df.columns.tolist()
+            # Keep relevant columns
+            columns = [id_col, period_col, t0_col, duration_col]
+            if mission == "Kepler":
+                columns.append("koi_quarters")
+            data_test = data_test[columns].copy()
 
-            return stats
+            # Drop NaNs
+            data_test = data_test.dropna().reset_index(drop=True)
+            if max_samples:
+                data_test = data_test.head(max_samples)
 
+            # Extract columns
+            identifiers = data_test[id_col].values
+            periods = data_test[period_col].values
+            t0s = data_test[t0_col].values
+            durations = data_test[duration_col].values
+
+            curves_finals = []
+            identifiers_finals = []
+
+            # Process each target
+            for idx, (identifier, period, t0, duration) in enumerate(zip(identifiers, periods, t0s, durations)):
+                try:
+                    # Download light curves
+                    lcs = lk.search_lightcurve(str(identifier), mission=mission, cadence='long').download_all()
+                    if lcs is None:
+                        self.logger.warning(f"No light curves for {identifier} (index: {idx})")
+                        continue
+
+                    # Ensure lcs is a list
+                    if isinstance(lcs, lk.LightCurveCollection):
+                        lcs = list(lcs)
+                    elif isinstance(lcs, lk.LightCurve):
+                        lcs = [lcs]
+
+                    # Preprocess light curves
+                    lcs = [lc.remove_nans().remove_outliers(sigma=3).normalize() for lc in lcs]
+                    flattened_curves = []
+
+                    for lc in lcs:
+                        temp_fold = lc.fold(period, epoch_time=t0)
+                        fractional_duration = (duration / 24.0) / period
+                        phase_mask = np.abs(temp_fold.phase.value) < (fractional_duration * 1.5)
+                        transit_mask = np.isin(lc.time.value, temp_fold.time_original.value[phase_mask])
+                        lc_flat, _ = lc.flatten(return_trend=True, mask=transit_mask)
+                        flattened_curves.append(lc_flat)
+
+                    # Stitch, fold, and bin
+                    lc_stitched = lk.LightCurveCollection(flattened_curves).stitch()
+                    lc_fold = lc_stitched.fold(period, epoch_time=t0)
+                    lc_final = lc_fold.bin(bins=50)
+
+                    # Standardize flux
+                    flux_mean = np.nanmean(lc_final.flux)
+                    flux_std = np.nanstd(lc_final.flux)
+                    if flux_std == 0 or np.isnan(flux_std):
+                        curve_final = np.array(lc_final.flux.value - flux_mean, dtype=float)
+                    else:
+                        curve_final = np.array((lc_final.flux.value - flux_mean) / flux_std, dtype=float)
+
+                    curves_finals.append(curve_final)
+                    identifiers_finals.append(identifier)
+
+                except Exception as e:
+                    self.logger.error(f"Error processing {identifier} (index: {idx}): {e}")
+
+            # Create DataFrame
+            data_test_final = pd.DataFrame(curves_finals, dtype=float)
+            data_test_final = data_test_final.interpolate(axis=1)
+            data_test_final["identifier"] = identifiers_finals
+
+            data_test_final.to_csv(self.features_file, index=False)
+            self.logger.info(f"Test features saved to {self.features_file} with {len(data_test_final)} records")
+            return data_test_final
         except Exception as e:
-            self.logger.error(f"Erro: {e}")
-            return {"error": str(e)}
+            self.logger.error(f"Error preprocessing test dataset {dataset_path}: {e}")
+            raise
+
+    def periodogram_lightcurve(self, results_tests: pd.DataFrame, mission: str = "Kepler") -> list:
+        """Generate BLS periodograms and folded light curves for candidate exoplanets.
+
+        Args:
+            results_tests (pd.DataFrame): DataFrame with 'identifier' and 'pred_label' columns.
+                                         Rows where 'pred_label' == 1 are treated as exoplanet candidates.
+            mission (str): Data mission (e.g., 'TESS', 'Kepler'). Defaults to 'Kepler'.
+
+        Returns:
+            list: List of dicts containing transit parameters and folded light curves for each target.
+        """
+        self.logger.info("Generating BLS periodograms for exoplanet candidates")
+        try:
+            # Filter only the rows classified as exoplanet candidates
+            exoplanets = results_tests[results_tests['pred_label'] == 1].copy()
+            list_exoplanets = []
+
+            # Loop through each identifier (kepid or hostname)
+            for identifier in exoplanets['identifier'].values:
+                try:
+                    # Download all available light curves for this target
+                    lc_collection = lk.search_lightcurve(str(identifier), mission=mission).download_all()
+                    if lc_collection is None or len(lc_collection) == 0:
+                        self.logger.warning(f"No light curves found for {identifier}")
+                        continue
+
+                    # Stitch all available sectors into a single continuous light curve
+                    lc = lc_collection.stitch()
+
+                    # Compute BLS periodogram
+                    periodogram = lc.to_periodogram(method='bls', frequency_factor=30)
+                    periods_array = periodogram.period.value
+                    power_array = periodogram.power.value
+
+                    # Extract transit parameters
+                    planet_period = periodogram.period_at_max_power
+                    planet_t0 = periodogram.transit_time_at_max_power
+                    planet_dur = periodogram.duration_at_max_power
+
+                    # Fold the light curve
+                    folded_lc = lc.fold(period=planet_period, epoch_time=planet_t0)
+                    phase = folded_lc.phase.value
+                    flux = folded_lc.flux.value
+
+                    # Build result dictionary
+                    lc_dict = {
+                        'identifier': identifier,
+                        'planet_period': float(planet_period.value),
+                        'transit_t0': float(planet_t0.value),
+                        'transit_duration': float(planet_dur.value),
+                        'lightcurve': {
+                            'phase': phase.tolist(),
+                            'flux': flux.tolist()
+                        },
+                        'periodogram': {
+                            'periods': periods_array.tolist(),
+                            'power': power_array.tolist()
+                        }
+                    }
+                    list_exoplanets.append(lc_dict)
+
+                except Exception as e:
+                    self.logger.error(f"Error processing {identifier}: {e}")
+
+            self.logger.info(f"Processed {len(list_exoplanets)} exoplanet candidates")
+            return list_exoplanets
+        except Exception as e:
+            self.logger.error(f"Error generating periodograms: {e}")
+            raise

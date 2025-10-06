@@ -181,4 +181,4 @@ def configure_exoplanet_endpoints(app):
             logger.error(f"Erro no endpoint /api/data/stats: {e}", exc_info=True)
             return jsonify({"error": str(e)}), 500
 
-    logger.info("✓ Endpoints de exoplanets configured")
+    logger.info("✓ Endpoints de exoplanetS CONFIGURED")

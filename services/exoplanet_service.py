@@ -85,7 +85,7 @@ class ExoplanetService:
             data = self.fetch_exoplanet_data(query)
             # Fallback: busca dados gerais se TESS falhar
             if data is None or len(data) == 0:
-                logger.warning("Fail TESS  fallback...")
+                logger.warning("Fail Toi  fallback...")
                 fallback_query = "select * from toi limit 10"
                 data = self.fetch_exoplanet_data(fallback_query)
 
@@ -139,10 +139,9 @@ class ExoplanetService:
             query = """
                     SELECT *
                     FROM cumulative
-                    WHERE koi_disposition IN ('CONFIRMED','FALSE POSITIVE')
+                    WHERE koi_disposition IN ('CONFIRMED', 'FALSE POSITIVE')
                     ORDER BY koi_score DESC \
                     """.replace('\n', ' ').replace('  ', ' ')
-
 
             data = self.fetch_exoplanet_data(query)
 

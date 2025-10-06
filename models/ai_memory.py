@@ -31,17 +31,13 @@ class AIMemory:
             logger.error(f"Erro ao armazenar dados de treinamento: {e}")
 
     def get_training_data(self) -> Optional[List[Dict]]:
-        """Recupera dados de treinamento da memória"""
         return self.training_data
 
     def store_model(self, model_info: Dict[str, Any]) -> None:
-        """Armazena informações do modelo na memória"""
         try:
-            # Remove o objeto do modelo para serialização (se necessário)
             serializable_info = model_info.copy()
             if 'model' in serializable_info:
-                # Em produção, você pode querer serializar o modelo
-                # Por enquanto, apenas mantemos a referência em memória
+
                 pass
 
             self.models_history.append(serializable_info)
@@ -50,19 +46,17 @@ class AIMemory:
             if len(self.models_history) > 10:
                 self.models_history = self.models_history[-10:]
 
-            logger.info(f"Modelo armazenado na memória. Total: {len(self.models_history)}")
+            logger.info(f"Model stored in memory. Total: {len(self.models_history)}")
 
         except Exception as e:
-            logger.error(f"Erro ao armazenar modelo: {e}")
+            logger.error(f"Error storing model: {e}")
 
     def get_latest_model(self) -> Optional[Dict[str, Any]]:
-        """Recupera o modelo mais recente da memória"""
         if not self.models_history:
             return None
         return self.models_history[-1]
 
     def get_model_history(self) -> List[Dict[str, Any]]:
-        """Recupera todo o histórico de modelos"""
         return self.models_history
 
     def store_prediction(self, prediction_data: Dict[str, Any]) -> None:
